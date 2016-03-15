@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base32"
 	"fmt"
 	"log"
 	"time"
@@ -20,37 +19,37 @@ func main() {
 		log.Fatal(err)
 	}
 
-	api, err := fsrepo.APIAddr(rpath)
+	apiaddr, err := fsrepo.APIAddr(rpath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	sh := api.NewShell(api)
+	sh := api.NewShell(apiaddr)
 
-	count := 1000
+	count := 2000
 
-	var names []string
-	buf := make([]byte, 10)
-	for i := 0; i < count; i++ {
-		r.Read(buf)
+	basedata := make([]byte, 100)
+	r.Read(basedata)
+	base := "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn"
 
-		names = append(names, base32.StdEncoding.EncodeToString(buf))
+	cur, err := sh.PatchData(base, true, basedata)
+	if err != nil {
+		log.Fatal(err)
 	}
+	fmt.Println(cur)
 
 	before := time.Now()
-	base := "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn"
-	cur := base
 	for i := 0; i < count; i++ {
-		out, err := sh.PatchLink(base, names[i], cur, false)
+		out, err := sh.PatchLink(base, "next-link-in-chain", cur, false)
 		if err != nil {
-			fmt.Println("error: ", base, names[i], cur)
-			fmt.Println(err)
-			return
+			fmt.Println("error: ", base, cur)
+			log.Fatal(err)
 		}
 
 		cur = out
 	}
 	took := time.Now().Sub(before)
+	fmt.Println(cur)
 
 	opss := float64(count) / took.Seconds()
 	fmt.Printf("%f op/s\n", opss)
