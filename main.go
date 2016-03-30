@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -12,6 +13,9 @@ import (
 )
 
 func main() {
+	cflag := flag.Int("count", 2000, "set number of ops to run")
+	flag.Parse()
+
 	r := randbo.New()
 
 	rpath, err := fsrepo.BestKnownPath()
@@ -26,7 +30,7 @@ func main() {
 
 	sh := api.NewShell(apiaddr)
 
-	count := 2000
+	count := *cflag
 
 	basedata := make([]byte, 100)
 	r.Read(basedata)
