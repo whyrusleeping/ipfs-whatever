@@ -214,12 +214,14 @@ func main() {
 
 func writeStat(w io.Writer, name string, before, after float64) {
 	delta := 100 * ((after / before) - 1)
-	fmt.Fprintf(w, "%s\t%.2f\t%.2f\t%.2f\n", name, before, after, delta)
+	fmt.Fprintf(w, "%s\t%.2f\t%.2f\t%.2f%%\n", name, before, after, delta)
 }
 
 func printBenchResults(a, b *IpfsBenchStats) {
+	fmt.Println()
 	w := tabwriter.NewWriter(os.Stdout, 4, 4, 2, ' ', 0)
 
+	fmt.Fprintln(w, "Results\tBefore\tAfter\t% Change\n")
 	writeStat(w, "PatchOpsPerSec", a.PatchOpsPerSec, b.PatchOpsPerSec)
 	writeStat(w, "DirAddOpsPerSec", a.DirAddOpsPerSec, b.DirAddOpsPerSec)
 	writeStat(w, "Add10MBTime", a.Add10MBTime.Seconds()*1000, b.Add10MBTime.Seconds()*1000)
