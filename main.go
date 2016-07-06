@@ -5,15 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
+	"text/tabwriter"
 	"time"
 
 	randbo "github.com/dustin/randbo"
 	api "github.com/ipfs/go-ipfs-api"
 
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
+
+	cli "github.com/codegangsta/cli"
 )
 
 var sh *api.Shell
@@ -79,7 +83,7 @@ func checkAddLink(count int) (float64, float64, error) {
 }
 
 func checkAddFile(size int) (float64, float64, error) {
-	trials := 10
+	trials := 15
 	buf := new(bytes.Buffer)
 	var times []float64
 
@@ -124,40 +128,107 @@ type IpfsBenchStats struct {
 	DirAddOpsStdev  float64
 }
 
-func main() {
+func getShell() error {
 	rpath, err := fsrepo.BestKnownPath()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	apiaddr, err := fsrepo.APIAddr(rpath)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	sh = api.NewShell(apiaddr)
+	return nil
+}
 
+func runBenchmarks() (*IpfsBenchStats, error) {
 	stats := new(IpfsBenchStats)
 
-	count, err := checkPatchOpsPerSec(2000)
+	fmt.Fprintln(os.Stderr, "checking patch operations per second...")
+	count, err := checkPatchOpsPerSec(1500)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	stats.PatchOpsPerSec = count
 
+	fmt.Fprintln(os.Stderr, "checking 10MB file adds...")
 	av, stdev, err := checkAddFile(10 * 1024 * 1024)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	stats.Add10MBTime = av
 	stats.Add10MBStdev = stdev
 
+	fmt.Fprintln(os.Stderr, "checking add-link ops per second...")
 	diradd, diraddstd, err := checkAddLink(100)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	stats.DirAddOpsPerSec = diradd
 	stats.DirAddOpsStdev = diraddstd
+	return stats, nil
+}
 
-	json.NewEncoder(os.Stdout).Encode(stats)
+func main() {
+	app := cli.NewApp()
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "before",
+			Usage: "specify file containing results from previous run to benchmark against",
+		},
+	}
+	app.Action = func(c *cli.Context) error {
+		err := getShell()
+		if err != nil {
+			return err
+		}
+
+		var oldstats *IpfsBenchStats
+		if bef := c.String("before"); bef != "" {
+			oldstats = new(IpfsBenchStats)
+			data, err := ioutil.ReadFile(bef)
+			if err != nil {
+				return err
+			}
+
+			err = json.Unmarshal(data, oldstats)
+			if err != nil {
+				return err
+			}
+		}
+
+		nstats, err := runBenchmarks()
+		if err != nil {
+			return err
+		}
+
+		if oldstats == nil {
+			return json.NewEncoder(os.Stdout).Encode(nstats)
+		}
+
+		printBenchResults(oldstats, nstats)
+		return nil
+	}
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func writeStat(w io.Writer, name string, before, after float64) {
+	delta := 100 * ((after / before) - 1)
+	fmt.Fprintf(w, "%s\t%.2f\t%.2f\t%.2f%%\n", name, before, after, delta)
+}
+
+func printBenchResults(a, b *IpfsBenchStats) {
+	fmt.Println()
+	w := tabwriter.NewWriter(os.Stdout, 4, 4, 2, ' ', 0)
+	fmt.Fprintln(w, "Results\tBefore\tAfter\t% Change")
+	writeStat(w, "PatchOpsPerSec", a.PatchOpsPerSec, b.PatchOpsPerSec)
+	writeStat(w, "DirAddOpsPerSec", a.DirAddOpsPerSec, b.DirAddOpsPerSec)
+	writeStat(w, "DirAddOpsStdev", a.DirAddOpsStdev, b.DirAddOpsStdev)
+	writeStat(w, "Add10MBTime", a.Add10MBTime, b.Add10MBTime)
+	writeStat(w, "Add10MBStdev", a.Add10MBStdev, b.Add10MBStdev)
+	w.Flush()
 }
