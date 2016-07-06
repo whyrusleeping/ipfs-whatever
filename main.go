@@ -221,7 +221,7 @@ func printBenchResults(a, b *IpfsBenchStats) {
 	fmt.Println()
 	w := tabwriter.NewWriter(os.Stdout, 4, 4, 2, ' ', 0)
 
-	fmt.Fprintln(w, "Results\tBefore\tAfter\t% Change\n")
+	fmt.Fprintln(w, "Results\tBefore\tAfter\t% Change")
 	writeStat(w, "PatchOpsPerSec", a.PatchOpsPerSec, b.PatchOpsPerSec)
 	writeStat(w, "DirAddOpsPerSec", a.DirAddOpsPerSec, b.DirAddOpsPerSec)
 	writeStat(w, "Add10MBTime", a.Add10MBTime.Seconds()*1000, b.Add10MBTime.Seconds()*1000)
