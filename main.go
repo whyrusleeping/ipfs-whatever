@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -103,6 +104,43 @@ func checkAddFile(size int) (float64, float64, error) {
 	return av, stdev, nil
 }
 
+func checkCatFile(size int) (float64, float64, error) {
+	trials := 15
+
+	buf := new(bytes.Buffer)
+	var times []float64
+	io.CopyN(buf, randbo.New(), int64(size))
+	hash, err := sh.Add(buf)
+	if err != nil {
+		return 0, 0, err
+	}
+	for i := 0; i < trials; i++ {
+		start := time.Now()
+		reader, err := sh.Cat("/ipfs/" + hash)
+		if err != nil {
+			return 0, 0, err
+		}
+		b := make([]byte, size)
+		total := 0
+		for {
+			n, err := reader.Read(b)
+			total += n
+			if err != nil || n == 0 {
+				break
+			}
+		}
+		if total != size {
+			return 0, 0, errors.New(fmt.Sprintf("Expected size: %d, got: %d", size, total))
+		}
+		reader.Close()
+		took := float64(time.Now().Sub(start)) / float64(time.Millisecond)
+		times = append(times, took)
+	}
+
+	av, stdev := timeStats(times)
+	return av, stdev, nil
+}
+
 func timeStats(ts []float64) (float64, float64) {
 	var average float64
 	for _, d := range ts {
@@ -126,6 +164,8 @@ type IpfsBenchStats struct {
 	Add10MBStdev    float64
 	DirAddOpsPerSec float64
 	DirAddOpsStdev  float64
+	Cat1MBTime      float64
+	Cat1MBStdev     float64
 }
 
 func getShell() error {
@@ -160,6 +200,14 @@ func runBenchmarks() (*IpfsBenchStats, error) {
 	}
 	stats.Add10MBTime = av
 	stats.Add10MBStdev = stdev
+
+	fmt.Fprintln(os.Stderr, "checking 1MB file reads...")
+	av, stdev, err = checkCatFile(1 * 1024 * 1024)
+	if err != nil {
+		return nil, err
+	}
+	stats.Cat1MBTime = av
+	stats.Cat1MBStdev = stdev
 
 	fmt.Fprintln(os.Stderr, "checking add-link ops per second...")
 	diradd, diraddstd, err := checkAddLink(100)
@@ -230,5 +278,7 @@ func printBenchResults(a, b *IpfsBenchStats) {
 	writeStat(w, "DirAddOpsStdev", a.DirAddOpsStdev, b.DirAddOpsStdev)
 	writeStat(w, "Add10MBTime", a.Add10MBTime, b.Add10MBTime)
 	writeStat(w, "Add10MBStdev", a.Add10MBStdev, b.Add10MBStdev)
+	writeStat(w, "Cat1MBTime", a.Cat1MBTime, b.Cat1MBTime)
+	writeStat(w, "Cat1MBStdev", a.Cat1MBStdev, b.Cat1MBStdev)
 	w.Flush()
 }
