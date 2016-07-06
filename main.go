@@ -48,40 +48,44 @@ func checkPatchOpsPerSec(count int) (float64, error) {
 	return float64(count) / took.Seconds(), nil
 }
 
-func checkAddLink(count int) (float64, error) {
+func checkAddLink(count int) (float64, float64, error) {
+	var times []float64
+
 	r := randbo.New()
 	basedata := make([]byte, 100)
 	r.Read(basedata)
 	base := "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn"
 
 	prev := base
-	before := time.Now()
 	for i := 0; i < count; i++ {
+		start := time.Now()
+
 		cur, err := sh.PatchLink(base, "FIRST", prev, false)
 		if err != nil {
 			fmt.Println("error: ", err)
-			return 0, err
+			return 0, 0, err
 		}
 
 		for j := 0; j < 200; j++ {
 			out, err := sh.PatchLink(cur, fmt.Sprintf("link-%d", j), base, false)
 			if err != nil {
 				fmt.Println("error: ", base, cur)
-				return 0, err
+				return 0, 0, err
 			}
 
 			cur = out
 		}
+		took := float64(time.Now().Sub(start)) / 200 / float64(time.Second)
+		times = append(times, 1/took)
 	}
-	took := time.Now().Sub(before)
-
-	return float64(count*200) / took.Seconds(), nil
+	avg, stdev := timeStats(times)
+	return avg, stdev, nil
 }
 
-func checkAddFile(size int) (time.Duration, time.Duration, error) {
+func checkAddFile(size int) (float64, float64, error) {
 	trials := 15
 	buf := new(bytes.Buffer)
-	var times []time.Duration
+	var times []float64
 
 	for i := 0; i < trials; i++ {
 		io.CopyN(buf, randbo.New(), int64(size))
@@ -91,7 +95,7 @@ func checkAddFile(size int) (time.Duration, time.Duration, error) {
 		if err != nil {
 			return 0, 0, err
 		}
-		took := time.Now().Sub(start)
+		took := float64(time.Now().Sub(start)) / float64(time.Second)
 		times = append(times, took)
 	}
 
@@ -99,30 +103,29 @@ func checkAddFile(size int) (time.Duration, time.Duration, error) {
 	return av, stdev, nil
 }
 
-func timeStats(ts []time.Duration) (time.Duration, time.Duration) {
-	var sum time.Duration
+func timeStats(ts []float64) (float64, float64) {
+	var average float64
 	for _, d := range ts {
-		sum += d
+		average += d / float64(len(ts))
 	}
 
-	average := sum / time.Duration(len(ts))
-
-	var stdevsum time.Duration
+	var stdevsum float64
 	for _, d := range ts {
 		v := average - d
 		stdevsum += (v * v)
 	}
 
-	stdev := time.Duration(math.Sqrt(float64(stdevsum / time.Duration(len(ts)))))
+	stdev := math.Sqrt(stdevsum / float64(len(ts)))
 
 	return average, stdev
 }
 
 type IpfsBenchStats struct {
 	PatchOpsPerSec  float64
-	Add10MBTime     time.Duration
-	Add10MBStdev    time.Duration
+	Add10MBTime     float64
+	Add10MBStdev    float64
 	DirAddOpsPerSec float64
+	DirAddOpsStdev  float64
 }
 
 func getShell() error {
@@ -159,11 +162,12 @@ func runBenchmarks() (*IpfsBenchStats, error) {
 	stats.Add10MBStdev = stdev
 
 	fmt.Fprintln(os.Stderr, "checking add-link ops per second...")
-	diradd, err := checkAddLink(40)
+	diradd, diraddstd, err := checkAddLink(100)
 	if err != nil {
 		return nil, err
 	}
 	stats.DirAddOpsPerSec = diradd
+	stats.DirAddOpsStdev = diraddstd
 	return stats, nil
 }
 
@@ -220,11 +224,11 @@ func writeStat(w io.Writer, name string, before, after float64) {
 func printBenchResults(a, b *IpfsBenchStats) {
 	fmt.Println()
 	w := tabwriter.NewWriter(os.Stdout, 4, 4, 2, ' ', 0)
-
 	fmt.Fprintln(w, "Results\tBefore\tAfter\t% Change")
 	writeStat(w, "PatchOpsPerSec", a.PatchOpsPerSec, b.PatchOpsPerSec)
 	writeStat(w, "DirAddOpsPerSec", a.DirAddOpsPerSec, b.DirAddOpsPerSec)
-	writeStat(w, "Add10MBTime", a.Add10MBTime.Seconds()*1000, b.Add10MBTime.Seconds()*1000)
-	writeStat(w, "Add10MBStdev", a.Add10MBStdev.Seconds()*1000, b.Add10MBStdev.Seconds()*1000)
+	writeStat(w, "DirAddOpsStdev", a.DirAddOpsStdev, b.DirAddOpsStdev)
+	writeStat(w, "Add10MBTime", a.Add10MBTime, b.Add10MBTime)
+	writeStat(w, "Add10MBStdev", a.Add10MBStdev, b.Add10MBStdev)
 	w.Flush()
 }
