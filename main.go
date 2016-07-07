@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"net/http"
 	"os"
 	"text/tabwriter"
 	"time"
@@ -152,7 +153,7 @@ func checkTraverseGraph() (float64, float64, float64, error) {
 	log.Println("generating graph...")
 	width := 10
 	bmkgraph := time.Now()
-	for i := 0; i < 350; i++ {
+	for i := 0; i < 300; i++ {
 		next := base
 		for j := 0; j < width; j++ {
 			n, err := sh.PatchLink(next, fmt.Sprint(j), cur, false)
@@ -168,7 +169,7 @@ func checkTraverseGraph() (float64, float64, float64, error) {
 
 	mkpath := func() string {
 		out := new(bytes.Buffer)
-		for i := 0; i < 300; i++ {
+		for i := 0; i < 290; i++ {
 			fmt.Fprintf(out, "/%d", rand.Intn(width))
 		}
 		return cur + out.String()
@@ -231,7 +232,7 @@ func getShell() error {
 		return err
 	}
 
-	sh = api.NewShell(apiaddr)
+	sh = api.NewShellWithClient(apiaddr, http.DefaultClient)
 	return nil
 }
 
