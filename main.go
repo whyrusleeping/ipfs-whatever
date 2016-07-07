@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"os"
 	"text/tabwriter"
 	"time"
@@ -22,6 +23,10 @@ import (
 )
 
 var sh *api.Shell
+
+func getMs(d time.Duration) float64 {
+	return float64(d) / float64(time.Millisecond)
+}
 
 func checkPatchOpsPerSec(count int) (float64, error) {
 	r := randbo.New()
@@ -141,6 +146,50 @@ func checkCatFile(size int) (float64, float64, error) {
 	return av, stdev, nil
 }
 
+func checkTraverseGraph() (float64, float64, float64, error) {
+	base := "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn"
+	cur := base
+	log.Println("generating graph...")
+	width := 10
+	bmkgraph := time.Now()
+	for i := 0; i < 350; i++ {
+		next := base
+		for j := 0; j < width; j++ {
+			n, err := sh.PatchLink(next, fmt.Sprint(j), cur, false)
+			if err != nil {
+				return 0, 0, 0, err
+			}
+			next = n
+		}
+		cur = next
+	}
+	graphCreateTook := time.Now().Sub(bmkgraph)
+	log.Println("graph created, beginning traversal benchmark")
+
+	mkpath := func() string {
+		out := new(bytes.Buffer)
+		for i := 0; i < 300; i++ {
+			fmt.Fprintf(out, "/%d", rand.Intn(width))
+		}
+		return cur + out.String()
+	}
+
+	var trials []float64
+	for i := 0; i < 200; i++ {
+		before := time.Now()
+		_, err := sh.ObjectGet(mkpath())
+		if err != nil {
+			return 0, 0, 0, err
+		}
+
+		took := time.Now().Sub(before)
+		trials = append(trials, getMs(took))
+	}
+
+	av, stdev := timeStats(trials)
+	return getMs(graphCreateTook), av, stdev, nil
+}
+
 func timeStats(ts []float64) (float64, float64) {
 	var average float64
 	for _, d := range ts {
@@ -166,6 +215,9 @@ type IpfsBenchStats struct {
 	DirAddOpsStdev  float64
 	Cat1MBTime      float64
 	Cat1MBStdev     float64
+	MkGraphTime     float64
+	TravGraphTime   float64
+	TravGraphStdev  float64
 }
 
 func getShell() error {
@@ -186,14 +238,14 @@ func getShell() error {
 func runBenchmarks() (*IpfsBenchStats, error) {
 	stats := new(IpfsBenchStats)
 
-	fmt.Fprintln(os.Stderr, "checking patch operations per second...")
+	log.Println("checking patch operations per second...")
 	count, err := checkPatchOpsPerSec(1500)
 	if err != nil {
 		return nil, err
 	}
 	stats.PatchOpsPerSec = count
 
-	fmt.Fprintln(os.Stderr, "checking 10MB file adds...")
+	log.Println("checking 10MB file adds...")
 	av, stdev, err := checkAddFile(10 * 1024 * 1024)
 	if err != nil {
 		return nil, err
@@ -201,7 +253,7 @@ func runBenchmarks() (*IpfsBenchStats, error) {
 	stats.Add10MBTime = av
 	stats.Add10MBStdev = stdev
 
-	fmt.Fprintln(os.Stderr, "checking 1MB file reads...")
+	log.Println("checking 1MB file reads...")
 	av, stdev, err = checkCatFile(1 * 1024 * 1024)
 	if err != nil {
 		return nil, err
@@ -209,13 +261,22 @@ func runBenchmarks() (*IpfsBenchStats, error) {
 	stats.Cat1MBTime = av
 	stats.Cat1MBStdev = stdev
 
-	fmt.Fprintln(os.Stderr, "checking add-link ops per second...")
+	log.Println("checking add-link ops per second...")
 	diradd, diraddstd, err := checkAddLink(100)
 	if err != nil {
 		return nil, err
 	}
 	stats.DirAddOpsPerSec = diradd
 	stats.DirAddOpsStdev = diraddstd
+
+	mkgraph, tgraph, tgstdev, err := checkTraverseGraph()
+	if err != nil {
+		return nil, err
+	}
+	stats.MkGraphTime = mkgraph
+	stats.TravGraphTime = tgraph
+	stats.TravGraphStdev = tgstdev
+
 	return stats, nil
 }
 
@@ -280,5 +341,8 @@ func printBenchResults(a, b *IpfsBenchStats) {
 	writeStat(w, "Add10MBStdev", a.Add10MBStdev, b.Add10MBStdev)
 	writeStat(w, "Cat1MBTime", a.Cat1MBTime, b.Cat1MBTime)
 	writeStat(w, "Cat1MBStdev", a.Cat1MBStdev, b.Cat1MBStdev)
+	writeStat(w, "MkGraphTime", a.MkGraphTime, b.MkGraphTime)
+	writeStat(w, "TravGraphTime", a.TravGraphTime, b.TravGraphTime)
+	writeStat(w, "TravGraphStdev", a.TravGraphStdev, b.TravGraphStdev)
 	w.Flush()
 }
