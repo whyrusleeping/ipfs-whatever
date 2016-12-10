@@ -232,7 +232,7 @@ func getShell() error {
 		return err
 	}
 
-	sh = api.NewShellWithClient(apiaddr, http.DefaultClient)
+	sh = api.NewShellWithClient(apiaddr.String(), http.DefaultClient)
 	return nil
 }
 
