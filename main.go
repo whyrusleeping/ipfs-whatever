@@ -151,9 +151,9 @@ func checkTraverseGraph() (float64, float64, float64, error) {
 	base := "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn"
 	cur := base
 	log.Println("generating graph...")
-	width := 10
+	width := 2
 	bmkgraph := time.Now()
-	for i := 0; i < 300; i++ {
+	for i := 0; i < 50; i++ {
 		next := base
 		for j := 0; j < width; j++ {
 			n, err := sh.PatchLink(next, fmt.Sprint(j), cur, false)
@@ -169,7 +169,7 @@ func checkTraverseGraph() (float64, float64, float64, error) {
 
 	mkpath := func() string {
 		out := new(bytes.Buffer)
-		for i := 0; i < 290; i++ {
+		for i := 0; i < 40; i++ {
 			fmt.Fprintf(out, "/%d", rand.Intn(width))
 		}
 		return cur + out.String()
